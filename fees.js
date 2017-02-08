@@ -1,6 +1,6 @@
 var Num = require('big-rational');
 
-function applyFees(chain, basis, payload) {
+function applyFees(chain, basis, time, payload) {
   basis = Num(basis);
 
   var fees = {};
@@ -30,40 +30,98 @@ function applyFees(chain, basis, payload) {
       }
     }
 
+    var rules = chain[id].rules;
     var amount;
 
-    if ('match' in chain[id]) {
-      for (var k in chain[id].match) {
-        if (payload[k] != chain[id].match[k]) {
-          fees[id].active = false;
-          fees[id].invalid = false;
-          fees[id].amount = Num.zero;
-          fees[id].applied = true;
-          return;
+    // In case no rules will match
+    fees[id].active = false;
+    fess[id].invalid = false;
+    fess[id].amount = Num.zero;
+
+    for (var i = 0; i < rules.length; i++) {
+
+      if ('match' in rules[i]) {
+        if (typeof rules[i].match == 'function') {
+          if (!rules[i].match(basis, input, output, time, payload, fees)) {
+            continue;
+          }
+        } else {
+          var matched = true;
+          for (var k in rules[i].match) {
+            if (payload[k] != rules[i].match[k]) {
+              matched = false;
+              break;
+            }
+          }
+          if (!matched) {
+            continue;
+          }
         }
       }
-    }
 
-    if ('func' in chain[id]) {
-      amount = Num(chain[id].func(basis, input, output, payload, fees));
-    } else
-    if ('fixed' in chain[id]) {
-      amount = Num(chain[id].fixed);
-    } else {
-      amount = input.multiply(chain[id].percent).divide(100);
-    }
+      if ('since' in rules[i]) {
+        if (time < rules[i].since) {
+          continue;
+        }
+      }
 
-    if ('min' in chain[id]) {
-      amount = amount.lesser(chain[id].min) ? Num(chain[id].min) : amount;
-    }
+      if ('till' in rules[i]) {
+        if (time > rules[i].till) {
+          continue;
+        }
+      }
 
-    if ('max' in chain[id]) {
-      amount = amount.greater(chain[id].max) ? Num(chain[id].max) : amount;
-    }
+      var comp = [
+        'gt',
+        'greater',
+        'geq',
+        'greaterOrEquals',
+        'lt',
+        'lesser',
+        'leq',
+        'lesserOrEquals',
+        'eq',
+        'equals',
+        'neq',
+        'notEquals'
+      ];
 
-    fees[id].active = true;
-    fees[id].invalid = amount.isNegative();
-    fees[id].amount = amount;
+      var valid = true;
+      for (var j = 0; j < comp.length; j++) {
+        if (comp[j] in rules[i]) {
+          if (!input[comp[j]](rules[i][comp[j]])) {
+            valid = false;
+            break;
+          }
+        }
+      }
+
+      if (!valid) {
+        continue;
+      }
+
+      if ('func' in rules[i]) {
+        amount = Num(rules[i].func(basis, input, output, time, payload, fees));
+      } else
+      if ('fixed' in rules[i]) {
+        amount = Num(rules[i].fixed);
+      } else {
+        amount = input.multiply(rules[i].percent).divide(100);
+      }
+
+      if ('min' in rules[i]) {
+        amount = amount.lesser(rules[i].min) ? Num(rules[i].min) : amount;
+      }
+
+      if ('max' in rules[i]) {
+        amount = amount.greater(rules[i].max) ? Num(rules[i].max) : amount;
+      }
+
+      fees[id].active = true;
+      fees[id].invalid = amount.isNegative();
+      fees[id].amount = amount;
+      break;
+    }
     fees[id].applied = true;
   }
 
@@ -97,12 +155,13 @@ function applyFees(chain, basis, payload) {
   }
 }
 
+var dt = new Date();
 var results = applyFees({
-  quokka:   { type: 'outer', percent: 5 },
-  terminal: { type: 'outer', percent: 2, min: 5.00, max: 10.00 },
-  other:    { type: 'outer', after: ['quokka'], percent: 1 },
-  bank:     { type: 'inner', after: ['other', 'terminal'], percent: 5 }
-}, 100.00);
+  quokka:   { type: 'outer', rules: [{ percent: 5 }] },
+  terminal: { type: 'outer', rules: [{ percent: 2, min: 5.00, max: 10.00 }] },
+  other:    { type: 'outer', after: ['quokka'], rules: [{ percent: 1 }] },
+  bank:     { type: 'inner', after: ['other', 'terminal'], rules: [{ percent: 5 }] }
+}, 100.00, dt.getHours() * 3600 + dt.getMinutes() * 60);
 
 console.log(results);
 
