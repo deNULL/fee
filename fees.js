@@ -35,8 +35,8 @@ function applyFees(chain, basis, time, payload) {
 
     // In case no rules will match
     fees[id].active = false;
-    fess[id].invalid = false;
-    fess[id].amount = Num.zero;
+    fees[id].invalid = false;
+    fees[id].amount = Num.zero;
 
     for (var i = 0; i < rules.length; i++) {
 
@@ -106,7 +106,7 @@ function applyFees(chain, basis, time, payload) {
       if ('fixed' in rules[i]) {
         amount = Num(rules[i].fixed);
       } else {
-        amount = input.multiply(rules[i].percent).divide(100);
+        amount = output.multiply(rules[i].percent).divide(100);
       }
 
       if ('min' in rules[i]) {
@@ -118,7 +118,7 @@ function applyFees(chain, basis, time, payload) {
       }
 
       fees[id].active = true;
-      fees[id].invalid = amount.isNegative();
+      fees[id].invalid = amount.isNegative() || (chain[id].type == 'inner' && output.lesser(amount));
       fees[id].amount = amount;
       break;
     }
@@ -147,6 +147,8 @@ function applyFees(chain, basis, time, payload) {
     invalid = invalid || fees[k].invalid;
   }
 
+  invalid = invalid || output.isNegative();
+
   return {
     input: input,
     output: output,
@@ -155,6 +157,7 @@ function applyFees(chain, basis, time, payload) {
   }
 }
 
+/*
 var dt = new Date();
 var results = applyFees({
   quokka:   { type: 'outer', rules: [{ percent: 5 }] },
@@ -164,5 +167,5 @@ var results = applyFees({
 }, 100.00, dt.getHours() * 3600 + dt.getMinutes() * 60);
 
 console.log(results);
-
+*/
 exports.apply = applyFees;
